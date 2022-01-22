@@ -22,18 +22,25 @@
 
 package com.uber.nullaway;
 
+import com.google.auto.value.AutoValue;
+import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.errorprone.ErrorProneFlags;
+import com.google.errorprone.util.ASTHelpers;
+import com.sun.tools.javac.code.Symbol;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 
 /**
  * provides nullability configuration based on additional flags passed to ErrorProne via
  * "-XepOpt:[Namespace:]FlagName[=Value]". See. http://errorprone.info/docs/flags
  */
-final class ErrorProneCLIFlagsConfig extends AbstractConfig {
+final class ErrorProneCLIFlagsConfig implements Config {
 
   private static final String BASENAME_REGEX = ".*/([^/]+)\\.[ja]ar$";
 
@@ -130,6 +137,61 @@ final class ErrorProneCLIFlagsConfig extends AbstractConfig {
           "org.springframework.beans.factory.annotation.Autowired");
 
   private static final String DEFAULT_URL = "http://t.uber.com/nullaway";
+  /**
+   * Packages that we assume have appropriate nullability annotations.
+   *
+   * <p>When we see an invocation to a method of a class outside these packages, we optimistically
+   * assume all parameters are @Nullable and the return value is @NonNull
+   */
+  private final Pattern annotatedPackages;
+  /**
+   * Sub-packages without appropriate nullability annotations.
+   *
+   * <p>Used to exclude a particular package that contains unannotated code within a larger,
+   * properly annotated, package.
+   */
+  private final Pattern unannotatedSubPackages;
+  /** Source code in these classes will not be analyzed for nullability issues */
+  @Nullable private final ImmutableSet<String> sourceClassesToExclude;
+  /**
+   * these classes will be treated as unannotated (don't analyze *and* treat methods as unannotated)
+   */
+  @Nullable private final ImmutableSet<String> unannotatedClasses;
+
+  private final Pattern fieldAnnotPattern;
+  private final boolean isExhaustiveOverride;
+  private final boolean isSuggestSuppressions;
+  private final boolean isAcknowledgeRestrictive;
+  private final boolean checkOptionalEmptiness;
+  private final boolean checkContracts;
+  private final boolean handleTestAssertionLibraries;
+  private final Set<String> optionalClassPaths;
+  private final boolean assertsEnabled;
+  /**
+   * if true, {@link #fromAnnotatedPackage(Symbol.ClassSymbol)} will return false for any class
+   * annotated with {@link javax.annotation.Generated}
+   */
+  private final boolean treatGeneratedAsUnannotated;
+
+  private final boolean acknowledgeAndroidRecent;
+  private final Set<MethodClassAndName> knownInitializers;
+  private final Set<String> excludedClassAnnotations;
+  private final Set<String> initializerAnnotations;
+  private final Set<String> externalInitAnnotations;
+  private final Set<String> contractAnnotations;
+  @Nullable private final String castToNonNullMethod;
+  private final String autofixSuppressionComment;
+  /** --- JarInfer configs --- */
+  private final boolean jarInferEnabled;
+
+  private final boolean jarInferUseReturnAnnotations;
+  private final String jarInferRegexStripModelJarName;
+  private final String jarInferRegexStripCodeJarName;
+  private final String errorURL;
+  /** --- Fully qualified names of custom nonnull/nullable annotation --- */
+  private final Set<String> customNonnullAnnotations;
+
+  private final Set<String> customNullableAnnotations;
 
   ErrorProneCLIFlagsConfig(ErrorProneFlags flags) {
     if (!flags.get(FL_ANNOTATED_PACKAGES).isPresent()) {
@@ -218,5 +280,208 @@ final class ErrorProneCLIFlagsConfig extends AbstractConfig {
       Collections.addAll(combined, flagValue.get().split(DELIMITER));
     }
     return ImmutableSet.copyOf(combined);
+  }
+
+  private static Pattern getPackagePattern(Set<String> packagePrefixes) {
+    // noinspection ConstantConditions
+    String choiceRegexp =
+        Joiner.on("|")
+            .join(Iterables.transform(packagePrefixes, input -> input.replaceAll("\\.", "\\\\.")));
+    return Pattern.compile("^(?:" + choiceRegexp + ")(?:\\..*)?");
+  }
+
+  @Override
+  public boolean fromAnnotatedPackage(Symbol.ClassSymbol symbol) {
+    String className = symbol.getQualifiedName().toString();
+    return annotatedPackages.matcher(className).matches()
+        && !unannotatedSubPackages.matcher(className).matches()
+        && (!treatGeneratedAsUnannotated
+            || !ASTHelpers.hasDirectAnnotationWithSimpleName(symbol, "Generated"));
+  }
+
+  @Override
+  public boolean isExcludedClass(String className) {
+    if (sourceClassesToExclude == null) {
+      return false;
+    }
+    for (String classPrefix : sourceClassesToExclude) {
+      if (className.startsWith(classPrefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @Override
+  public boolean isUnannotatedClass(Symbol.ClassSymbol symbol) {
+    if (unannotatedClasses == null) {
+      return false;
+    }
+    String className = symbol.getQualifiedName().toString();
+    for (String classPrefix : unannotatedClasses) {
+      if (className.startsWith(classPrefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @Override
+  public ImmutableSet<String> getExcludedClassAnnotations() {
+    return ImmutableSet.copyOf(excludedClassAnnotations);
+  }
+
+  @Override
+  public boolean isInitializerMethodAnnotation(String annotationName) {
+    return initializerAnnotations.contains(annotationName);
+  }
+
+  @Override
+  public boolean isCustomNullableAnnotation(String annotationName) {
+    return customNullableAnnotations.contains(annotationName);
+  }
+
+  @Override
+  public boolean isCustomNonnullAnnotation(String annotationName) {
+    return customNonnullAnnotations.contains(annotationName);
+  }
+
+  @Override
+  public boolean exhaustiveOverride() {
+    return isExhaustiveOverride;
+  }
+
+  @Override
+  public boolean isKnownInitializerMethod(Symbol.MethodSymbol methodSymbol) {
+    Symbol.ClassSymbol enclosingClass = ASTHelpers.enclosingClass(methodSymbol);
+    MethodClassAndName classAndName =
+        MethodClassAndName.create(
+            enclosingClass.getQualifiedName().toString(), methodSymbol.getSimpleName().toString());
+    return knownInitializers.contains(classAndName);
+  }
+
+  @Override
+  public boolean isExcludedFieldAnnotation(String annotationName) {
+    return Nullness.isNullableAnnotation(annotationName, this)
+        || (fieldAnnotPattern != null && fieldAnnotPattern.matcher(annotationName).matches());
+  }
+
+  @Override
+  public boolean suggestSuppressions() {
+    return isSuggestSuppressions;
+  }
+
+  @Override
+  public boolean acknowledgeRestrictiveAnnotations() {
+    return isAcknowledgeRestrictive;
+  }
+
+  @Override
+  public boolean checkOptionalEmptiness() {
+    return checkOptionalEmptiness;
+  }
+
+  @Override
+  public boolean checkContracts() {
+    return checkContracts;
+  }
+
+  @Override
+  public boolean handleTestAssertionLibraries() {
+    return handleTestAssertionLibraries;
+  }
+
+  @Override
+  public Set<String> getOptionalClassPaths() {
+    return optionalClassPaths;
+  }
+
+  @Override
+  public boolean assertsEnabled() {
+    return assertsEnabled;
+  }
+
+  @Override
+  @Nullable
+  public String getCastToNonNullMethod() {
+    return castToNonNullMethod;
+  }
+
+  @Override
+  public String getAutofixSuppressionComment() {
+    if (autofixSuppressionComment.trim().length() > 0) {
+      return "/* " + autofixSuppressionComment + " */ ";
+    } else {
+      return "";
+    }
+  }
+
+  @Override
+  public boolean isExternalInitClassAnnotation(String annotationName) {
+    return externalInitAnnotations.contains(annotationName);
+  }
+
+  @Override
+  public boolean isContractAnnotation(String annotationName) {
+    return contractAnnotations.contains(annotationName);
+  }
+
+  private Set<MethodClassAndName> getKnownInitializers(Set<String> qualifiedNames) {
+    Set<MethodClassAndName> result = new LinkedHashSet<>();
+    for (String name : qualifiedNames) {
+      int lastDot = name.lastIndexOf('.');
+      String methodName = name.substring(lastDot + 1);
+      String className = name.substring(0, lastDot);
+      result.add(MethodClassAndName.create(className, methodName));
+    }
+    return result;
+  }
+
+  /** --- JarInfer configs --- */
+  @Override
+  public boolean isJarInferEnabled() {
+    return jarInferEnabled;
+  }
+
+  @Override
+  public boolean isJarInferUseReturnAnnotations() {
+    return jarInferUseReturnAnnotations;
+  }
+
+  @Override
+  public String getJarInferRegexStripModelJarName() {
+    return jarInferRegexStripModelJarName;
+  }
+
+  @Override
+  public String getJarInferRegexStripCodeJarName() {
+    return jarInferRegexStripCodeJarName;
+  }
+
+  @Override
+  public String getErrorURL() {
+    return errorURL;
+  }
+
+  @Override
+  public boolean treatGeneratedAsUnannotated() {
+    return treatGeneratedAsUnannotated;
+  }
+
+  @Override
+  public boolean acknowledgeAndroidRecent() {
+    return acknowledgeAndroidRecent;
+  }
+
+  @AutoValue
+  abstract static class MethodClassAndName {
+
+    static MethodClassAndName create(String enclosingClass, String methodName) {
+      return new AutoValue_ErrorProneCLIFlagsConfig_MethodClassAndName(enclosingClass, methodName);
+    }
+
+    abstract String enclosingClass();
+
+    abstract String methodName();
   }
 }
