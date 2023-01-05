@@ -1,6 +1,8 @@
 package com.uber.nullaway;
 
 import com.google.errorprone.VisitorState;
+import com.google.errorprone.suppliers.Supplier;
+import com.google.errorprone.suppliers.Suppliers;
 import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.AnnotatedTypeTree;
 import com.sun.source.tree.AnnotationTree;
@@ -11,6 +13,7 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.tools.javac.code.Attribute;
 import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.code.TypeMetadata;
 import com.sun.tools.javac.tree.JCTree;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -139,6 +142,7 @@ public final class GenericsChecks {
     // check assignment instantiation only for the generics
     if (rhsTree instanceof NewClassTree
         && ((NewClassTree) rhsTree).getIdentifier() instanceof ParameterizedTypeTree) {
+      messAround(rhsTree);
       ParameterizedTypeTree paramTypedTree =
           (ParameterizedTypeTree) ((NewClassTree) rhsTree).getIdentifier();
       if (paramTypedTree.getTypeArguments().size() <= 0) {
@@ -150,6 +154,37 @@ public final class GenericsChecks {
     AnnotatedTypeWrapper rhsTypeWrapper = getAnnotatedTypeWrapper(rhsTree);
 
     checkIdenticalWrappers(tree, lhsTypeWrapper, rhsTypeWrapper);
+  }
+
+  // TODO use the actual name of the annotation type in the NewClassTree.  The JSpecify Nullable may
+  // not be available
+  private static final String NULLABLE_NAME = "org.jspecify.annotations.Nullable";
+
+  private static final Supplier<Type> NULLABLE_TYPE_SUPPLIER =
+      Suppliers.typeFromString(NULLABLE_NAME);
+
+  private void messAround(Tree rhsTree) {
+    Type.ClassType type = (Type.ClassType) ASTHelpers.getType(rhsTree);
+    com.sun.tools.javac.util.List<Type> typeArguments = type.getTypeArguments();
+    Type nullableType = NULLABLE_TYPE_SUPPLIER.get(state);
+    List<Type> newTypeArgs = new ArrayList<>();
+    for (Type arg : typeArguments) {
+      // TODO this just adds @Nullable to every single type argument.  What we really need is to
+      // recursively traverse
+      // the NewClassTree and only add @Nullable to the right type arguments (including nested ones)
+      List<Attribute.TypeCompound> myAnnos = new ArrayList<>();
+      myAnnos.add(
+          new Attribute.TypeCompound(nullableType, com.sun.tools.javac.util.List.nil(), null));
+      com.sun.tools.javac.util.List<Attribute.TypeCompound> annos =
+          com.sun.tools.javac.util.List.from(myAnnos);
+      TypeMetadata md = new TypeMetadata(new TypeMetadata.Annotations(annos));
+      Type.ClassType newArg = (Type.ClassType) arg.cloneWithMetadata(md);
+      newTypeArgs.add(newArg);
+    }
+    Type.ClassType finalType =
+        new Type.ClassType(
+            type.getEnclosingType(), com.sun.tools.javac.util.List.from(newTypeArgs), type.tsym);
+    System.err.println(finalType);
   }
 
   private AnnotatedTypeWrapper getAnnotatedTypeWrapper(Tree tree) {
