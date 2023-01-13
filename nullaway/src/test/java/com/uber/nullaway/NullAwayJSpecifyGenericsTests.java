@@ -432,6 +432,59 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
         .doTest();
   }
 
+  @Test
+  public void genericFunctionReturnTypeMultipleReturnStatementsIfElseBlock() {
+    makeHelper()
+        .addSourceLines(
+            "Test.java",
+            "package com.uber;",
+            "import org.jspecify.annotations.Nullable;",
+            "class Test {",
+            "  static class A<T extends @Nullable Object> { }",
+            "  static A<String> method1(A<@Nullable String> a, int num) {",
+            "   if (num % 2 == 0) {",
+            "    // BUG: Diagnostic contains: Cannot assign from type",
+            "     return a;",
+            "    } else {",
+            "     return new A<String>();",
+            "    }",
+            "  }",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void genericFunctionReturnTypeMultipleReturnStatementsInsideLoop() {
+    makeHelper()
+        .addSourceLines(
+            "Test.java",
+            "package com.uber;",
+            "import org.jspecify.annotations.Nullable;",
+            "class Test {",
+            "  static class A<T extends @Nullable Object> { }",
+            "  static A<String> method1(A<@Nullable String> a, int num) {",
+            "   for(int i = 0; i < num; i++) {",
+            "     if (i % 13 == 0) {",
+            "      // BUG: Diagnostic contains: Cannot assign from type",
+            "       return a;",
+            "     }",
+            "    } ",
+            "    return new A<String>();",
+            "  }",
+            "  static A<String> method2(A<@Nullable String> a, int num) {",
+            "   while(num != 0) {",
+            "     if (num % 13 == 0) {",
+            "      // BUG: Diagnostic contains: Cannot assign from type",
+            "       return a;",
+            "     }",
+            "     num --;",
+            "    } ",
+            "    return new A<String>();",
+            "  }",
+            "}")
+        .doTest();
+  }
+
   private CompilationTestHelper makeHelper() {
     return makeTestHelperWithArgs(
         Arrays.asList(

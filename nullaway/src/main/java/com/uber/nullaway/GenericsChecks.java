@@ -10,6 +10,7 @@ import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.AnnotatedTypeTree;
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.AssignmentTree;
+import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParameterizedTypeTree;
@@ -179,7 +180,10 @@ public final class GenericsChecks {
           typeWithPreservedAnnotations(
               (ParameterizedTypeTree) ((NewClassTree) rhsTree).getIdentifier());
     }
-    if (lhsType != null && rhsType != null) {
+    if (lhsType != null
+        && rhsType != null
+        && lhsType instanceof Type.ClassType
+        && rhsType instanceof Type.ClassType) {
       compareNullabilityAnnotations((Type.ClassType) lhsType, (Type.ClassType) rhsType, tree);
     }
   }
@@ -191,7 +195,16 @@ public final class GenericsChecks {
     if (tree.getBody() == null) {
       return;
     }
-    List<? extends StatementTree> methodStatements = tree.getBody().getStatements();
+    // find the return statements in the method body and compare the annotations with the method
+    // return type
+    checkForReturnStatements(tree.getBody(), ASTHelpers.getType(tree.getReturnType()));
+  }
+
+  public void checkForReturnStatements(BlockTree body, Type methodType) {
+    if (body == null) {
+      return;
+    }
+    List<? extends StatementTree> methodStatements = body.getStatements();
     if (methodStatements == null) {
       return;
     }
@@ -202,7 +215,6 @@ public final class GenericsChecks {
         System.out.println(methodStatements.get(i));
         Tree returnStatementTree = ((JCTree.JCReturn) methodStatements.get(i)).getExpression();
         Type returnType = ASTHelpers.getType(returnStatementTree);
-        Type methodType = ASTHelpers.getType(tree.getReturnType());
         // getting the type of the Parameterized type tree with the preserved annotations.
         if (returnStatementTree instanceof NewClassTree
             && ((NewClassTree) returnStatementTree).getIdentifier()
@@ -218,6 +230,19 @@ public final class GenericsChecks {
           compareNullabilityAnnotations(
               (Type.ClassType) methodType, (Type.ClassType) returnType, returnStatementTree);
         }
+      } else if (statement instanceof JCTree.JCIf) { // if the statement is an if else block
+        JCTree.JCIf ifBlock = (JCTree.JCIf) statement;
+        checkForReturnStatements((BlockTree) ifBlock.thenpart, methodType);
+        checkForReturnStatements((BlockTree) ifBlock.elsepart, methodType);
+      } else if (statement instanceof JCTree.JCForLoop) {
+        JCTree.JCForLoop loop = (JCTree.JCForLoop) statement;
+        checkForReturnStatements((BlockTree) loop.body, methodType);
+      } else if (statement instanceof JCTree.JCWhileLoop) {
+        JCTree.JCWhileLoop loop = (JCTree.JCWhileLoop) statement;
+        checkForReturnStatements((BlockTree) loop.body, methodType);
+      } else if (statement instanceof JCTree.JCDoWhileLoop) {
+        JCTree.JCDoWhileLoop loop = (JCTree.JCDoWhileLoop) statement;
+        checkForReturnStatements((BlockTree) loop.body, methodType);
       }
     }
   }
