@@ -624,9 +624,12 @@ public class NullAway extends BugChecker
         return checkOverriding(closestOverriddenMethod, methodSymbol, null, state);
       }
     }
-
-    new GenericsChecks(state, config, this).checkTypeParameterNullnessForFunctionReturnType(tree);
-
+    // compare Nullability annotations for parameters of method return type and the method return
+    // statements
+    if (ASTHelpers.getType(tree.getReturnType()) != null
+        && ASTHelpers.getType(tree.getReturnType()).getTypeArguments().length() > 0) {
+      new GenericsChecks(state, config, this).checkTypeParameterNullnessForFunctionReturnType(tree);
+    }
     return Description.NO_MATCH;
   }
 
