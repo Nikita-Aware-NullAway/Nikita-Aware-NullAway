@@ -385,7 +385,7 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
   }
 
   @Test
-  public void genericFunctionReturnType() {
+  public void genericFunctionReturnTypeNewClassTree() {
     makeHelper()
         .addSourceLines(
             "Test.java",
@@ -400,6 +400,32 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "  static A<@Nullable String> method2() {",
             "   // BUG: Diagnostic contains: Cannot assign from type",
             "   return new A<String>();",
+            "  }",
+            "  static void method3(int a) {",
+            "   System.out.println(a);",
+            "  }",
+            "  static A<@Nullable String> method4() {",
+            "   return new A<@Nullable String>();",
+            "  }",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void genericFunctionReturnTypeNormalTree() {
+    makeHelper()
+        .addSourceLines(
+            "Test.java",
+            "package com.uber;",
+            "import org.jspecify.annotations.Nullable;",
+            "class Test {",
+            "  static class A<T extends @Nullable Object> { }",
+            "  static A<String> method1(A<@Nullable String> a) {",
+            "   // BUG: Diagnostic contains: Cannot assign from type",
+            "   return a;",
+            "  }",
+            "  static A<@Nullable String> method2(A<@Nullable String> a) {",
+            "   return a;",
             "  }",
             "}")
         .doTest();
