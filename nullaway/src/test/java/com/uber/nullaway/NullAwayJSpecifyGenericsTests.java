@@ -384,6 +384,23 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
         .doTest();
   }
 
+  @Test
+  public void genericFunctionReturnType() {
+    makeHelper()
+        .addSourceLines(
+            "Test.java",
+            "package com.uber;",
+            "import org.jspecify.annotations.Nullable;",
+            "class Test {",
+            "  static class A<T extends @Nullable Object> { }",
+            "  static A<String> method() {",
+            "   // BUG: Diagnostic contains: Cannot assign from type",
+            "   return new A<@Nullable String>();",
+            "  }",
+            "}")
+        .doTest();
+  }
+
   private CompilationTestHelper makeHelper() {
     return makeTestHelperWithArgs(
         Arrays.asList(

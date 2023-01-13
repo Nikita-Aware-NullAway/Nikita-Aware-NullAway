@@ -624,6 +624,9 @@ public class NullAway extends BugChecker
         return checkOverriding(closestOverriddenMethod, methodSymbol, null, state);
       }
     }
+
+    new GenericsChecks(state, config, this).checkTypeParameterNullnessForFunctionReturnType(tree);
+
     return Description.NO_MATCH;
   }
 
