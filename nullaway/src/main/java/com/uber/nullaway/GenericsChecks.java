@@ -185,6 +185,9 @@ public final class GenericsChecks {
   }
 
   public void checkTypeParameterNullnessForFunctionReturnType(MethodTree tree) {
+    if (!config.isJSpecifyMode()) {
+      return;
+    }
     if (tree.getBody() == null) {
       return;
     }
