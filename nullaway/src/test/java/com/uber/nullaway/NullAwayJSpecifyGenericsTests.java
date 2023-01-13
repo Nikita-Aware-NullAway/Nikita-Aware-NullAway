@@ -393,9 +393,13 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "import org.jspecify.annotations.Nullable;",
             "class Test {",
             "  static class A<T extends @Nullable Object> { }",
-            "  static A<String> method() {",
+            "  static A<String> method1() {",
             "   // BUG: Diagnostic contains: Cannot assign from type",
             "   return new A<@Nullable String>();",
+            "  }",
+            "  static A<@Nullable String> method2() {",
+            "   // BUG: Diagnostic contains: Cannot assign from type",
+            "   return new A<String>();",
             "  }",
             "}")
         .doTest();
