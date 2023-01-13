@@ -10,18 +10,16 @@ import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.AnnotatedTypeTree;
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.AssignmentTree;
-import com.sun.source.tree.BlockTree;
-import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParameterizedTypeTree;
-import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.tools.javac.code.Attribute;
+import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.TypeMetadata;
 import com.sun.tools.javac.code.Types;
-import com.sun.tools.javac.tree.JCTree;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -188,62 +186,37 @@ public final class GenericsChecks {
     }
   }
 
-  public void checkTypeParameterNullnessForFunctionReturnType(MethodTree tree) {
+  public void checkTypeParameterNullnessForFunctionReturnType(
+      ExpressionTree retExpr, Symbol.MethodSymbol methodSymbol) {
     if (!config.isJSpecifyMode()) {
       return;
     }
-    if (tree.getBody() == null) {
-      return;
-    }
-    // find the return statements in the method body and compare the annotations with the method
-    // return type
-    checkForReturnStatements(tree.getBody(), ASTHelpers.getType(tree.getReturnType()));
-  }
 
-  public void checkForReturnStatements(BlockTree body, Type methodType) {
-    if (body == null) {
+    Type methodType = methodSymbol.getReturnType();
+    // check nullability of parameters only for generics
+    if (methodType.getTypeArguments().length() <= 0) {
       return;
     }
-    List<? extends StatementTree> methodStatements = body.getStatements();
-    if (methodStatements == null) {
-      return;
-    }
-    for (int i = 0; i < methodStatements.size(); i++) {
-      StatementTree statement = methodStatements.get(i);
-      // if it is a return statement then compare the Nullability annotations for the parameters
-      if (statement instanceof JCTree.JCReturn) {
-        System.out.println(methodStatements.get(i));
-        Tree returnStatementTree = ((JCTree.JCReturn) methodStatements.get(i)).getExpression();
-        Type returnType = ASTHelpers.getType(returnStatementTree);
-        // getting the type of the Parameterized type tree with the preserved annotations.
-        if (returnStatementTree instanceof NewClassTree
-            && ((NewClassTree) returnStatementTree).getIdentifier()
-                instanceof ParameterizedTypeTree) {
-          returnType =
-              typeWithPreservedAnnotations(
-                  (ParameterizedTypeTree) ((NewClassTree) returnStatementTree).getIdentifier());
-        }
-        if (returnType != null
-            && methodType != null
-            && returnType instanceof Type.ClassType
-            && methodType instanceof Type.ClassType) {
-          compareNullabilityAnnotations(
-              (Type.ClassType) methodType, (Type.ClassType) returnType, returnStatementTree);
-        }
-      } else if (statement instanceof JCTree.JCIf) { // if the statement is an if else block
-        JCTree.JCIf ifBlock = (JCTree.JCIf) statement;
-        checkForReturnStatements((BlockTree) ifBlock.thenpart, methodType);
-        checkForReturnStatements((BlockTree) ifBlock.elsepart, methodType);
-      } else if (statement instanceof JCTree.JCForLoop) {
-        JCTree.JCForLoop loop = (JCTree.JCForLoop) statement;
-        checkForReturnStatements((BlockTree) loop.body, methodType);
-      } else if (statement instanceof JCTree.JCWhileLoop) {
-        JCTree.JCWhileLoop loop = (JCTree.JCWhileLoop) statement;
-        checkForReturnStatements((BlockTree) loop.body, methodType);
-      } else if (statement instanceof JCTree.JCDoWhileLoop) {
-        JCTree.JCDoWhileLoop loop = (JCTree.JCDoWhileLoop) statement;
-        checkForReturnStatements((BlockTree) loop.body, methodType);
+    Type returnExpressionType = ASTHelpers.getType(retExpr);
+
+    if (retExpr instanceof NewClassTree
+        && ((NewClassTree) retExpr).getIdentifier() instanceof ParameterizedTypeTree) {
+      ParameterizedTypeTree paramTypedTree =
+          (ParameterizedTypeTree) ((NewClassTree) retExpr).getIdentifier();
+      if (paramTypedTree.getTypeArguments().isEmpty()) {
+        // no explicit type parameters
+        return;
       }
+      returnExpressionType =
+          typeWithPreservedAnnotations(
+              (ParameterizedTypeTree) ((NewClassTree) retExpr).getIdentifier());
+    }
+    if (methodType != null
+        && returnExpressionType != null
+        && methodType instanceof Type.ClassType
+        && returnExpressionType instanceof Type.ClassType) {
+      compareNullabilityAnnotations(
+          (Type.ClassType) methodType, (Type.ClassType) returnExpressionType, retExpr);
     }
   }
   /**
