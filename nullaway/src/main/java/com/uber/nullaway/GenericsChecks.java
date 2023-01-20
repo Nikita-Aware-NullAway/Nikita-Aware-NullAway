@@ -10,6 +10,7 @@ import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.AnnotatedTypeTree;
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.AssignmentTree;
+import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParameterizedTypeTree;
@@ -323,5 +324,67 @@ public final class GenericsChecks {
         new Type.ClassType(
             type.getEnclosingType(), com.sun.tools.javac.util.List.from(newTypeArgs), type.tsym);
     return finalType;
+  }
+
+  public void checkTypeParameterNullnessForAssignabilityForConditionalExpression(
+      ConditionalExpressionTree tree) {
+    if (!config.isJSpecifyMode()) {
+      return;
+    }
+    //  Tree lhsTree;
+    Type lhsType;
+    Tree truePartTree;
+    Tree falsePartTree;
+
+    lhsType = ASTHelpers.getType(tree);
+    truePartTree = tree.getTrueExpression();
+    falsePartTree = tree.getFalseExpression();
+    // rhsTree can be null for a VariableTree.  Also, we don't need to do a check
+    // if rhsTree is the null literal
+    if (truePartTree == null
+        || truePartTree.getKind().equals(Tree.Kind.NULL_LITERAL)
+        || falsePartTree == null
+        || falsePartTree.getKind().equals(Tree.Kind.NULL_LITERAL)) {
+      return;
+    }
+    Type truePartType = ASTHelpers.getType(truePartTree);
+    Type falsePartType = ASTHelpers.getType(falsePartTree);
+    // For NewClassTrees with annotated type parameters, javac does not preserve the annotations in
+    // its computed type for the expression.  As a workaround, we construct a replacement Type
+    // object with the appropriate annotations.
+    if (truePartType instanceof NewClassTree
+        && ((NewClassTree) truePartType).getIdentifier() instanceof ParameterizedTypeTree) {
+      ParameterizedTypeTree paramTypedTree =
+          (ParameterizedTypeTree) ((NewClassTree) truePartType).getIdentifier();
+      if (paramTypedTree.getTypeArguments().isEmpty()) {
+        // no explicit type parameters
+        return;
+      }
+      truePartType =
+          typeWithPreservedAnnotations(
+              (ParameterizedTypeTree) ((NewClassTree) truePartTree).getIdentifier());
+    }
+
+    if (falsePartTree instanceof NewClassTree
+        && ((NewClassTree) falsePartTree).getIdentifier() instanceof ParameterizedTypeTree) {
+      ParameterizedTypeTree paramTypedTree =
+          (ParameterizedTypeTree) ((NewClassTree) falsePartTree).getIdentifier();
+      if (paramTypedTree.getTypeArguments().isEmpty()) {
+        // no explicit type parameters
+        return;
+      }
+      falsePartType =
+          typeWithPreservedAnnotations(
+              (ParameterizedTypeTree) ((NewClassTree) falsePartTree).getIdentifier());
+    }
+    if (truePartType != null
+        && falsePartType != null
+        && falsePartType instanceof Type.ClassType
+        && truePartType instanceof Type.ClassType
+        && lhsType != null
+        && lhsType instanceof Type.ClassType) {
+      compareNullabilityAnnotations((Type.ClassType) truePartType, (Type.ClassType) lhsType, tree);
+      compareNullabilityAnnotations((Type.ClassType) lhsType, (Type.ClassType) falsePartType, tree);
+    }
   }
 }
