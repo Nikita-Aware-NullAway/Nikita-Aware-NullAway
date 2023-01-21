@@ -501,6 +501,8 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "  static void method2(boolean t) {",
             "      // BUG: Diagnostic contains: Cannot assign from type",
             "   A<@Nullable String> t1 = t ? new A<String>() : new A<String>();",
+            "   // BUG: Diagnostic contains: Cannot assign from type",
+            "   A<String> t2 = t ? new A<@Nullable String>() : new A<@Nullable String>();",
             "  }",
             "}")
         .doTest();
