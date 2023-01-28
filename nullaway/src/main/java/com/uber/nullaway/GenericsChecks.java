@@ -133,6 +133,17 @@ public final class GenericsChecks {
             errorMessage, analysis.buildDescription(tree), state, null));
   }
 
+  Type getTreeType(Tree tree) {
+    Type type = ASTHelpers.getType(tree);
+    if (tree instanceof NewClassTree
+        && ((NewClassTree) tree).getIdentifier() instanceof ParameterizedTypeTree) {
+      ParameterizedTypeTree paramTypedTree =
+          (ParameterizedTypeTree) ((NewClassTree) tree).getIdentifier();
+      type = typeWithPreservedAnnotations(paramTypedTree);
+    }
+    return type;
+  }
+
   /**
    * For a tree representing an assignment, ensures that from the perspective of type parameter
    * nullability, the type of the right-hand side is assignable to (a subtype of) the type of the
@@ -162,23 +173,9 @@ public final class GenericsChecks {
     if (rhsTree == null || rhsTree.getKind().equals(Tree.Kind.NULL_LITERAL)) {
       return;
     }
-    Type lhsType = ASTHelpers.getType(lhsTree);
-    Type rhsType = ASTHelpers.getType(rhsTree);
-    // For NewClassTrees with annotated type parameters, javac does not preserve the annotations in
-    // its computed type for the expression.  As a workaround, we construct a replacement Type
-    // object with the appropriate annotations.
-    if (rhsTree instanceof NewClassTree
-        && ((NewClassTree) rhsTree).getIdentifier() instanceof ParameterizedTypeTree) {
-      ParameterizedTypeTree paramTypedTree =
-          (ParameterizedTypeTree) ((NewClassTree) rhsTree).getIdentifier();
-      if (paramTypedTree.getTypeArguments().isEmpty()) {
-        // no explicit type parameters
-        return;
-      }
-      rhsType =
-          typeWithPreservedAnnotations(
-              (ParameterizedTypeTree) ((NewClassTree) rhsTree).getIdentifier());
-    }
+    Type lhsType = getTreeType(lhsTree);
+    Type rhsType = getTreeType(rhsTree);
+
     if (lhsType != null
         && rhsType != null
         && lhsType instanceof Type.ClassType
@@ -198,20 +195,7 @@ public final class GenericsChecks {
     if (methodType.getTypeArguments().length() <= 0) {
       return;
     }
-    Type returnExpressionType = ASTHelpers.getType(retExpr);
-
-    if (retExpr instanceof NewClassTree
-        && ((NewClassTree) retExpr).getIdentifier() instanceof ParameterizedTypeTree) {
-      ParameterizedTypeTree paramTypedTree =
-          (ParameterizedTypeTree) ((NewClassTree) retExpr).getIdentifier();
-      if (paramTypedTree.getTypeArguments().isEmpty()) {
-        // no explicit type parameters
-        return;
-      }
-      returnExpressionType =
-          typeWithPreservedAnnotations(
-              (ParameterizedTypeTree) ((NewClassTree) retExpr).getIdentifier());
-    }
+    Type returnExpressionType = getTreeType(retExpr);
     if (methodType != null
         && returnExpressionType != null
         && methodType instanceof Type.ClassType
@@ -339,35 +323,14 @@ public final class GenericsChecks {
     lhsType = ASTHelpers.getType(tree);
     truePartTree = tree.getTrueExpression();
     falsePartTree = tree.getFalseExpression();
-    Type truePartType = ASTHelpers.getType(truePartTree);
-    Type falsePartType = ASTHelpers.getType(falsePartTree);
-    // For NewClassTrees with annotated type parameters, javac does not preserve the annotations in
-    // its computed type for the expression.  As a workaround, we construct a replacement Type
-    // object with the appropriate annotations.
-    if (truePartTree instanceof NewClassTree
-        && ((NewClassTree) truePartTree).getIdentifier() instanceof ParameterizedTypeTree) {
-      ParameterizedTypeTree paramTypedTree =
-          (ParameterizedTypeTree) ((NewClassTree) truePartTree).getIdentifier();
-      if (paramTypedTree.getTypeArguments().isEmpty()) {
-        // no explicit type parameters
-        return;
-      }
-      truePartType =
-          typeWithPreservedAnnotations(
-              (ParameterizedTypeTree) ((NewClassTree) truePartTree).getIdentifier());
+    Type truePartType = getTreeType(truePartTree);
+    Type falsePartType = getTreeType(falsePartTree);
+    // handling diamond operator case for now
+    if (truePartType.getTypeArguments().isEmpty()) {
+      return;
     }
-
-    if (falsePartTree instanceof NewClassTree
-        && ((NewClassTree) falsePartTree).getIdentifier() instanceof ParameterizedTypeTree) {
-      ParameterizedTypeTree paramTypedTree =
-          (ParameterizedTypeTree) ((NewClassTree) falsePartTree).getIdentifier();
-      if (paramTypedTree.getTypeArguments().isEmpty()) {
-        // no explicit type parameters
-        return;
-      }
-      falsePartType =
-          typeWithPreservedAnnotations(
-              (ParameterizedTypeTree) ((NewClassTree) falsePartTree).getIdentifier());
+    if (falsePartType.getTypeArguments().isEmpty()) {
+      return;
     }
     if (truePartType != null
         && falsePartType != null
