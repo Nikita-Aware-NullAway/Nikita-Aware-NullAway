@@ -344,10 +344,10 @@ public final class GenericsChecks {
     // For NewClassTrees with annotated type parameters, javac does not preserve the annotations in
     // its computed type for the expression.  As a workaround, we construct a replacement Type
     // object with the appropriate annotations.
-    if (truePartType instanceof NewClassTree
-        && ((NewClassTree) truePartType).getIdentifier() instanceof ParameterizedTypeTree) {
+    if (truePartTree instanceof NewClassTree
+        && ((NewClassTree) truePartTree).getIdentifier() instanceof ParameterizedTypeTree) {
       ParameterizedTypeTree paramTypedTree =
-          (ParameterizedTypeTree) ((NewClassTree) truePartType).getIdentifier();
+          (ParameterizedTypeTree) ((NewClassTree) truePartTree).getIdentifier();
       if (paramTypedTree.getTypeArguments().isEmpty()) {
         // no explicit type parameters
         return;
