@@ -339,14 +339,6 @@ public final class GenericsChecks {
     lhsType = ASTHelpers.getType(tree);
     truePartTree = tree.getTrueExpression();
     falsePartTree = tree.getFalseExpression();
-    // rhsTree can be null for a VariableTree.  Also, we don't need to do a check
-    // if rhsTree is the null literal
-    if (truePartTree == null
-        || truePartTree.getKind().equals(Tree.Kind.NULL_LITERAL)
-        || falsePartTree == null
-        || falsePartTree.getKind().equals(Tree.Kind.NULL_LITERAL)) {
-      return;
-    }
     Type truePartType = ASTHelpers.getType(truePartTree);
     Type falsePartType = ASTHelpers.getType(falsePartTree);
     // For NewClassTrees with annotated type parameters, javac does not preserve the annotations in
