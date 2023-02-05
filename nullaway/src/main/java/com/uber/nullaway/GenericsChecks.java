@@ -133,7 +133,14 @@ public final class GenericsChecks {
             errorMessage, analysis.buildDescription(tree), state, null));
   }
 
-  Type getTreeType(Tree tree) {
+  /**
+   * This method returns type of the tree considering that the parameterized typed tree annotations
+   * are not preserved if obtained directly using ASTHelpers.
+   *
+   * @param tree A tree for which we need the type with preserved annotations.
+   * @return Type of the tree with preserved annotations.
+   */
+  private Type getTreeType(Tree tree) {
     Type type = ASTHelpers.getType(tree);
     if (tree instanceof NewClassTree
         && ((NewClassTree) tree).getIdentifier() instanceof ParameterizedTypeTree) {
@@ -196,10 +203,7 @@ public final class GenericsChecks {
       return;
     }
     Type returnExpressionType = getTreeType(retExpr);
-    if (methodType != null
-        && returnExpressionType != null
-        && methodType instanceof Type.ClassType
-        && returnExpressionType instanceof Type.ClassType) {
+    if (methodType instanceof Type.ClassType && returnExpressionType instanceof Type.ClassType) {
       compareNullabilityAnnotations(
           (Type.ClassType) methodType, (Type.ClassType) returnExpressionType, retExpr);
     }
@@ -332,11 +336,8 @@ public final class GenericsChecks {
     if (falsePartType.getTypeArguments().isEmpty()) {
       return;
     }
-    if (truePartType != null
-        && falsePartType != null
-        && falsePartType instanceof Type.ClassType
+    if (falsePartType instanceof Type.ClassType
         && truePartType instanceof Type.ClassType
-        && lhsType != null
         && lhsType instanceof Type.ClassType) {
       compareNullabilityAnnotations((Type.ClassType) truePartType, (Type.ClassType) lhsType, tree);
       compareNullabilityAnnotations((Type.ClassType) lhsType, (Type.ClassType) falsePartType, tree);

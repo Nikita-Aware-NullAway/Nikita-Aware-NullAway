@@ -468,16 +468,6 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "    } ",
             "    return new A<String>();",
             "  }",
-            "  static A<String> method2(A<@Nullable String> a, int num) {",
-            "   while(num != 0) {",
-            "     if (num % 13 == 0) {",
-            "      // BUG: Diagnostic contains: Cannot assign from type",
-            "       return a;",
-            "     }",
-            "     num --;",
-            "    } ",
-            "    return new A<String>();",
-            "  }",
             "}")
         .doTest();
   }
