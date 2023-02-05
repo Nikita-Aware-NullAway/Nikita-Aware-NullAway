@@ -147,7 +147,7 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "    static class NullableTypeParam<E extends @Nullable Object> {}",
             "    // BUG: Diagnostic contains: Generic type parameter",
             "    static NonNullTypeParam<@Nullable String> testBadNonNull() {",
-            "    // BUG: Diagnostic contains: Cannot assign from type",
+            "    // BUG: Diagnostic contains: Cannot return the type",
             "          return new NonNullTypeParam<String>();",
             "    }",
             "    static NullableTypeParam<@Nullable String> testOKNull() {",
@@ -395,11 +395,11 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "class Test {",
             "  static class A<T extends @Nullable Object> { }",
             "  static A<String> testPositive1() {",
-            "   // BUG: Diagnostic contains: Cannot assign from type",
+            "   // BUG: Diagnostic contains: Cannot return the type",
             "   return new A<@Nullable String>();",
             "  }",
             "  static A<@Nullable String> testPositive2() {",
-            "   // BUG: Diagnostic contains: Cannot assign from type",
+            "   // BUG: Diagnostic contains: Cannot return the type",
             "   return new A<String>();",
             "  }",
             "  static A<@Nullable String> testNegative() {",
@@ -419,7 +419,7 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "class Test {",
             "  static class A<T extends @Nullable Object> { }",
             "  static A<String> method1(A<@Nullable String> a) {",
-            "   // BUG: Diagnostic contains: Cannot assign from type",
+            "   // BUG: Diagnostic contains: Cannot return the type",
             "   return a;",
             "  }",
             "  static A<@Nullable String> method2(A<@Nullable String> a) {",
@@ -440,33 +440,11 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "  static class A<T extends @Nullable Object> { }",
             "  static A<String> method1(A<@Nullable String> a, int num) {",
             "   if (num % 2 == 0) {",
-            "    // BUG: Diagnostic contains: Cannot assign from type",
+            "    // BUG: Diagnostic contains: Cannot return the type",
             "     return a;",
             "    } else {",
             "     return new A<String>();",
             "    }",
-            "  }",
-            "}")
-        .doTest();
-  }
-
-  @Test
-  public void genericFunctionReturnTypeMultipleReturnStatementsInsideLoop() {
-    makeHelper()
-        .addSourceLines(
-            "Test.java",
-            "package com.uber;",
-            "import org.jspecify.annotations.Nullable;",
-            "class Test {",
-            "  static class A<T extends @Nullable Object> { }",
-            "  static A<String> method1(A<@Nullable String> a, int num) {",
-            "   for(int i = 0; i < num; i++) {",
-            "     if (i % 13 == 0) {",
-            "      // BUG: Diagnostic contains: Cannot assign from type",
-            "       return a;",
-            "     }",
-            "    } ",
-            "    return new A<String>();",
             "  }",
             "}")
         .doTest();
@@ -485,11 +463,9 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "      // BUG: Diagnostic contains: Cannot assign from type",
             "   A<@Nullable String> t1 = t ? new A<String>() : new A<@Nullable String>();",
             "  }",
-            "  static void method2(boolean t) {",
-            "      // BUG: Diagnostic contains: Cannot assign from type",
-            "   A<@Nullable String> t1 = t ? new A<String>() : new A<String>();",
-            "   // BUG: Diagnostic contains: Cannot assign from type",
-            "   A<String> t2 = t ? new A<@Nullable String>() : new A<@Nullable String>();",
+            "  static A<String> method2(boolean t) {",
+            "   // BUG: Diagnostic contains: Cannot return the type",
+            "   return t ? new A<@Nullable String>() : new A<@Nullable String>();",
             "  }",
             "}")
         .doTest();

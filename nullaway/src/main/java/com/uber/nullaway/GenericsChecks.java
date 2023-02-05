@@ -133,6 +133,23 @@ public final class GenericsChecks {
             errorMessage, analysis.buildDescription(tree), state, null));
   }
 
+  private static void reportInvalidReturnTypeError(
+      Tree tree, Type methodType, Type returnType, VisitorState state, NullAway analysis) {
+    ErrorBuilder errorBuilder = analysis.getErrorBuilder();
+    ErrorMessage errorMessage =
+        new ErrorMessage(
+            ErrorMessage.MessageTypes.RETURN_NULLABLE,
+            String.format(
+                "Cannot return the type "
+                    + returnType
+                    + " to the method type "
+                    + methodType
+                    + " due to mismatched nullability of type parameters"));
+    state.reportMatch(
+        errorBuilder.createErrorDescription(
+            errorMessage, analysis.buildDescription(tree), state, null));
+  }
+
   /**
    * This method returns type of the tree considering that the parameterized typed tree annotations
    * are not preserved if obtained directly using ASTHelpers.
@@ -141,6 +158,9 @@ public final class GenericsChecks {
    * @return Type of the tree with preserved annotations.
    */
   private Type getTreeType(Tree tree) {
+    if (tree instanceof ConditionalExpressionTree) {
+      tree = ((ConditionalExpressionTree) tree).getTrueExpression();
+    }
     Type type = ASTHelpers.getType(tree);
     if (tree instanceof NewClassTree
         && ((NewClassTree) tree).getIdentifier() instanceof ParameterizedTypeTree) {
@@ -148,6 +168,7 @@ public final class GenericsChecks {
           (ParameterizedTypeTree) ((NewClassTree) tree).getIdentifier();
       type = typeWithPreservedAnnotations(paramTypedTree);
     }
+
     return type;
   }
 
@@ -247,7 +268,11 @@ public final class GenericsChecks {
       boolean isRHSNullableAnnotated =
           Nullness.hasNullableAnnotation(annotationMirrorsRHS.stream(), config);
       if (isLHSNullableAnnotated != isRHSNullableAnnotated) {
-        reportInvalidAssignmentInstantiationError(tree, lhsType, rhsType, state, analysis);
+        if (tree instanceof AssignmentTree || tree instanceof VariableTree) {
+          reportInvalidAssignmentInstantiationError(tree, lhsType, rhsType, state, analysis);
+        } else {
+          reportInvalidReturnTypeError(tree, lhsType, rhsType, state, analysis);
+        }
         return;
       }
       // nested generics
@@ -319,12 +344,10 @@ public final class GenericsChecks {
     if (!config.isJSpecifyMode()) {
       return;
     }
-    //  Tree lhsTree;
-    Type lhsType;
+
     Tree truePartTree;
     Tree falsePartTree;
 
-    lhsType = ASTHelpers.getType(tree);
     truePartTree = tree.getTrueExpression();
     falsePartTree = tree.getFalseExpression();
     Type truePartType = getTreeType(truePartTree);
@@ -336,11 +359,9 @@ public final class GenericsChecks {
     if (falsePartType.getTypeArguments().isEmpty()) {
       return;
     }
-    if (falsePartType instanceof Type.ClassType
-        && truePartType instanceof Type.ClassType
-        && lhsType instanceof Type.ClassType) {
-      compareNullabilityAnnotations((Type.ClassType) truePartType, (Type.ClassType) lhsType, tree);
-      compareNullabilityAnnotations((Type.ClassType) lhsType, (Type.ClassType) falsePartType, tree);
+    if (falsePartType instanceof Type.ClassType && truePartType instanceof Type.ClassType) {
+      compareNullabilityAnnotations(
+          (Type.ClassType) truePartType, (Type.ClassType) falsePartType, tree);
     }
   }
 }
