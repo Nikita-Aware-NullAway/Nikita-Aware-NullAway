@@ -204,10 +204,7 @@ public final class GenericsChecks {
     Type lhsType = getTreeType(lhsTree);
     Type rhsType = getTreeType(rhsTree);
 
-    if (lhsType != null
-        && rhsType != null
-        && lhsType instanceof Type.ClassType
-        && rhsType instanceof Type.ClassType) {
+    if (lhsType instanceof Type.ClassType && rhsType instanceof Type.ClassType) {
       compareNullabilityAnnotations((Type.ClassType) lhsType, (Type.ClassType) rhsType, tree);
     }
   }
