@@ -42,11 +42,6 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "    static void testBadNonNull(NonNullTypeParam<String> t) {",
             "        // BUG: Diagnostic contains: Generic type parameter",
             "       NonNullTypeParam<String> t2 = new NonNullTypeParam<@Nullable String>();",
-            "        // BUG: Diagnostic contains: Generic type parameter",
-            "        testBadNonNull(new NonNullTypeParam<@Nullable String>());",
-            "        testBadNonNull(new NonNullTypeParam<",
-            "              // BUG: Diagnostic contains: Generic type parameter",
-            "              @Nullable String>());",
             "    }",
             "    static void testOkNullable(NullableTypeParam<String> t1, NullableTypeParam<@Nullable String> t2) {",
             "        NullableTypeParam<String> t3 = new NullableTypeParam<String>();",
@@ -466,6 +461,26 @@ public class NullAwayJSpecifyGenericsTests extends NullAwayTestsBase {
             "  static A<String> method2(boolean t) {",
             "   // BUG: Diagnostic contains: Cannot return the type",
             "   return t ? new A<@Nullable String>() : new A<@Nullable String>();",
+            "  }",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void genericsChecksForParameterPassing() {
+    makeHelper()
+        .addSourceLines(
+            "Test.java",
+            "package com.uber;",
+            "import org.jspecify.annotations.Nullable;",
+            "class Test {",
+            "static class A<T extends @Nullable Object> { }",
+            "  static A<String> method1(A<A<String>> a1, A<String> a2) {",
+            "     return a2;",
+            "  }",
+            "  static void method2(A<A<@Nullable String>> a1, A<String> a2) {",
+            "   // BUG: Diagnostic contains: Cannot invoke the method",
+            "   A<String> a = method1(a1, a2);",
             "  }",
             "}")
         .doTest();

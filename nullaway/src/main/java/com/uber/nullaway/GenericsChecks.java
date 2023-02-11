@@ -4,6 +4,7 @@ import static com.uber.nullaway.NullabilityUtil.castToNonNull;
 
 import com.google.common.base.Preconditions;
 import com.google.errorprone.VisitorState;
+import com.google.errorprone.matchers.Description;
 import com.google.errorprone.suppliers.Supplier;
 import com.google.errorprone.suppliers.Suppliers;
 import com.google.errorprone.util.ASTHelpers;
@@ -116,7 +117,11 @@ public final class GenericsChecks {
             errorMessage, analysis.buildDescription(tree), state, null));
   }
 
-  private static void reportInvalidAssignmentInstantiationError(
+  private static void reportError(Description errorDescription, VisitorState state) {
+    state.reportMatch(errorDescription);
+  }
+
+  private static Description invalidAssignmentInstantiationError(
       Tree tree, Type lhsType, Type rhsType, VisitorState state, NullAway analysis) {
     ErrorBuilder errorBuilder = analysis.getErrorBuilder();
     ErrorMessage errorMessage =
@@ -128,12 +133,12 @@ public final class GenericsChecks {
                     + " to type "
                     + lhsType
                     + " due to mismatched nullability of type parameters"));
-    state.reportMatch(
-        errorBuilder.createErrorDescription(
-            errorMessage, analysis.buildDescription(tree), state, null));
+
+    return errorBuilder.createErrorDescription(
+        errorMessage, analysis.buildDescription(tree), state, null);
   }
 
-  private static void reportInvalidReturnTypeError(
+  private static Description invalidReturnTypeError(
       Tree tree, Type methodType, Type returnType, VisitorState state, NullAway analysis) {
     ErrorBuilder errorBuilder = analysis.getErrorBuilder();
     ErrorMessage errorMessage =
@@ -145,9 +150,30 @@ public final class GenericsChecks {
                     + " to the method type "
                     + methodType
                     + " due to mismatched nullability of type parameters"));
-    state.reportMatch(
-        errorBuilder.createErrorDescription(
-            errorMessage, analysis.buildDescription(tree), state, null));
+
+    return errorBuilder.createErrorDescription(
+        errorMessage, analysis.buildDescription(tree), state, null);
+  }
+
+  private static Description invalidParametersNullabilityError(
+      Type formalParameter,
+      Type actualParameter,
+      Tree tree,
+      VisitorState state,
+      NullAway analysis) {
+    ErrorBuilder errorBuilder = analysis.getErrorBuilder();
+    ErrorMessage errorMessage =
+        new ErrorMessage(
+            ErrorMessage.MessageTypes.TYPE_PARAMETER_CANNOT_BE_NULLABLE,
+            String.format(
+                "Cannot invoke the method as the "
+                    + actualParameter
+                    + " type parameter passed to the "
+                    + formalParameter
+                    + " type formal parameter"));
+
+    return errorBuilder.createErrorDescription(
+        errorMessage, analysis.buildDescription(tree), state, null);
   }
 
   /**
@@ -205,7 +231,10 @@ public final class GenericsChecks {
     Type rhsType = getTreeType(rhsTree);
 
     if (lhsType instanceof Type.ClassType && rhsType instanceof Type.ClassType) {
-      compareNullabilityAnnotations((Type.ClassType) lhsType, (Type.ClassType) rhsType, tree);
+      Description errorDescription =
+          invalidAssignmentInstantiationError(tree, lhsType, rhsType, state, analysis);
+      compareNullabilityAnnotations(
+          (Type.ClassType) lhsType, (Type.ClassType) rhsType, tree, errorDescription);
     }
   }
 
@@ -222,8 +251,13 @@ public final class GenericsChecks {
     }
     Type returnExpressionType = getTreeType(retExpr);
     if (methodType instanceof Type.ClassType && returnExpressionType instanceof Type.ClassType) {
+      Description errorDescription =
+          invalidReturnTypeError(retExpr, methodType, returnExpressionType, state, analysis);
       compareNullabilityAnnotations(
-          (Type.ClassType) methodType, (Type.ClassType) returnExpressionType, retExpr);
+          (Type.ClassType) methodType,
+          (Type.ClassType) returnExpressionType,
+          retExpr,
+          errorDescription);
     }
   }
   /**
@@ -239,7 +273,7 @@ public final class GenericsChecks {
    * @param tree tree representing the assignment
    */
   private void compareNullabilityAnnotations(
-      Type.ClassType lhsType, Type.ClassType rhsType, Tree tree) {
+      Type.ClassType lhsType, Type.ClassType rhsType, Tree tree, Description errorDescription) {
     Types types = state.getTypes();
     // The base type of rhsType may be a subtype of lhsType's base type.  In such cases, we must
     // compare lhsType against the supertype of rhsType with a matching base type.
@@ -275,17 +309,17 @@ public final class GenericsChecks {
         }
       }
       if (isLHSNullableAnnotated != isRHSNullableAnnotated) {
-        if (tree instanceof AssignmentTree || tree instanceof VariableTree) {
-          reportInvalidAssignmentInstantiationError(tree, lhsType, rhsType, state, analysis);
-        } else {
-          reportInvalidReturnTypeError(tree, lhsType, rhsType, state, analysis);
-        }
+        reportError(errorDescription, state);
         return;
       }
       // nested generics
       if (lhsTypeArgument.getTypeArguments().length() > 0) {
+        // TODO: Update the error message for the nested calls
         compareNullabilityAnnotations(
-            (Type.ClassType) lhsTypeArgument, (Type.ClassType) rhsTypeArgument, tree);
+            (Type.ClassType) lhsTypeArgument,
+            (Type.ClassType) rhsTypeArgument,
+            tree,
+            errorDescription);
       }
     }
   }
@@ -367,8 +401,36 @@ public final class GenericsChecks {
       return;
     }
     if (falsePartType instanceof Type.ClassType && truePartType instanceof Type.ClassType) {
+      Description errorDescription =
+          invalidAssignmentInstantiationError(tree, truePartType, falsePartType, state, analysis);
       compareNullabilityAnnotations(
-          (Type.ClassType) truePartType, (Type.ClassType) falsePartType, tree);
+          (Type.ClassType) truePartType, (Type.ClassType) falsePartType, tree, errorDescription);
+    }
+  }
+
+  public void compareNullabilityOfGenericParameters(
+      List<Symbol.VarSymbol> formalParams, List<? extends ExpressionTree> actualParams) {
+    if (!config.isJSpecifyMode()) {
+      return;
+    }
+    // Check if the parameters are generics and compare annotations for the actual and formal
+    // parameters
+    for (int i = 0; i < formalParams.size(); i++) {
+      Type formalParameter = formalParams.get(i).type;
+      if (formalParameter.getTypeArguments().size() > 0) {
+        Type actualParameter = getTreeType(actualParams.get(i));
+        if (formalParameter instanceof Type.ClassType
+            && actualParameter instanceof Type.ClassType) {
+          Description errorDescription =
+              invalidParametersNullabilityError(
+                  formalParameter, actualParameter, actualParams.get(i), state, analysis);
+          compareNullabilityAnnotations(
+              (Type.ClassType) formalParameter,
+              (Type.ClassType) actualParameter,
+              actualParams.get(i),
+              errorDescription);
+        }
+      }
     }
   }
 }
