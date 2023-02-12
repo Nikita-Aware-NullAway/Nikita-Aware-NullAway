@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 /** Methods for performing checks related to generic types and nullability. */
 public final class GenericsChecks {
@@ -35,9 +36,9 @@ public final class GenericsChecks {
 
   private static final Supplier<Type> NULLABLE_TYPE_SUPPLIER =
       Suppliers.typeFromString(NULLABLE_NAME);
-  VisitorState state;
-  Config config;
-  NullAway analysis;
+  private VisitorState state;
+  private Config config;
+  private NullAway analysis;
 
   public GenericsChecks(VisitorState state, Config config, NullAway analysis) {
     this.state = state;
@@ -183,19 +184,24 @@ public final class GenericsChecks {
    * @param tree A tree for which we need the type with preserved annotations.
    * @return Type of the tree with preserved annotations.
    */
+  @Nullable
   private Type getTreeType(Tree tree) {
     if (tree instanceof ConditionalExpressionTree) {
       tree = ((ConditionalExpressionTree) tree).getTrueExpression();
     }
-    Type type = ASTHelpers.getType(tree);
     if (tree instanceof NewClassTree
         && ((NewClassTree) tree).getIdentifier() instanceof ParameterizedTypeTree) {
       ParameterizedTypeTree paramTypedTree =
           (ParameterizedTypeTree) ((NewClassTree) tree).getIdentifier();
-      type = typeWithPreservedAnnotations(paramTypedTree);
+      if (paramTypedTree.getTypeArguments().isEmpty()) {
+        // diamond operator, which we do not yet support; for now, return null
+        // TODO: support diamond operators
+        return null;
+      }
+      return typeWithPreservedAnnotations(paramTypedTree);
+    } else {
+      return ASTHelpers.getType(tree);
     }
-
-    return type;
   }
 
   /**
@@ -260,6 +266,7 @@ public final class GenericsChecks {
           errorDescription);
     }
   }
+
   /**
    * Compare two types from an assignment for identical type parameter nullability, recursively
    * checking nested generic types. See <a
@@ -278,11 +285,15 @@ public final class GenericsChecks {
     // The base type of rhsType may be a subtype of lhsType's base type.  In such cases, we must
     // compare lhsType against the supertype of rhsType with a matching base type.
     rhsType = (Type.ClassType) types.asSuper(rhsType, lhsType.tsym);
+    // This is impossible, considering the fact that standard Java subtyping succeeds before running
+    // NullAway
     if (rhsType == null) {
       throw new RuntimeException("Did not find supertype of " + rhsType + " matching " + lhsType);
     }
     List<Type> lhsTypeArguments = lhsType.getTypeArguments();
     List<Type> rhsTypeArguments = rhsType.getTypeArguments();
+    // This is impossible, considering the fact that standard Java subtyping succeeds before running
+    // NullAway
     if (lhsTypeArguments.size() != rhsTypeArguments.size()) {
       throw new RuntimeException(
           "Number of types arguments in " + rhsType + " does not match " + lhsType);
@@ -325,6 +336,10 @@ public final class GenericsChecks {
   }
 
   /**
+   * For the Parameterized typed trees, ASTHelpers.getType(tree) does not return a Type with
+   * preserved annotations. This method takes a Parameterized typed tree as an input and returns the
+   * Type of the tree with the annotations.
+   *
    * @param tree A parameterized typed tree for which we need class type with preserved annotations.
    * @return A Type with preserved annotations.
    */
