@@ -215,15 +215,16 @@ public final class GenericsChecks {
       return;
     }
 
-    Type methodType = methodSymbol.getReturnType();
+    Type formalReturnType = methodSymbol.getReturnType();
     // check nullability of parameters only for generics
-    if (methodType.getTypeArguments().length() <= 0) {
+    if (formalReturnType.getTypeArguments().length() <= 0) {
       return;
     }
     Type returnExpressionType = getTreeType(retExpr);
-    if (methodType instanceof Type.ClassType && returnExpressionType instanceof Type.ClassType) {
+    if (formalReturnType instanceof Type.ClassType
+        && returnExpressionType instanceof Type.ClassType) {
       compareNullabilityAnnotations(
-          (Type.ClassType) methodType, (Type.ClassType) returnExpressionType, retExpr);
+          (Type.ClassType) formalReturnType, (Type.ClassType) returnExpressionType, retExpr);
     }
   }
   /**
